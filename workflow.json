@@ -1,0 +1,239 @@
+{
+  "name": "Email Triage & Auto-Reply (Safe)",
+  "nodes": [
+    {
+      "id": "gmail-trigger",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "every5Minutes"
+            }
+          ]
+        },
+        "simple": true,
+        "options": {
+          "query": "label:incoming-auto -in:chats -from:(noreply OR no-reply OR do-not-reply) -subject:(receipt OR code OR verification OR out of office OR auto-reply)"
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CRED_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "prep-body",
+      "name": "Prep Body (Function)",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "functionCode": "const itemsOut = [];\nfor (const item of items) {\n  const j = item.json || {};\n  const body = j.text || j.textPlain || j.snippet || '';\n  const subject = j.subject || (j.payload && j.payload.headers && j.payload.headers.subject) || '';\n  const from = j.from || (j.payload && j.payload.headers && j.payload.headers.from) || '';\n  itemsOut.push({ json: { from, subject, body } });\n}\nreturn itemsOut;"
+      }
+    },
+    {
+      "id": "guard-if",
+      "name": "Skip Auto/NoReply (IF)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json['from']}}",
+              "operation": "notRegex",
+              "value2": "(?i)(noreply|no-reply|do-not-reply)"
+            },
+            {
+              "value1": "={{$json['subject']}}",
+              "operation": "notRegex",
+              "value2": "(?i)(out of office|auto.?reply|verification|code|receipt)"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ai-model",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        660,
+        -120
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_WITH_YOUR_OPENAI_CRED_ID",
+          "name": "OpenAI account"
+        }
+      },
+      "notes": "System: You are a concise assistant.\nInstruction: From the email body below, output ONLY a short 1\u20132 sentence professional reply acknowledging receipt, not JSON.\nEmail body:\n{{ $json.body }}"
+    },
+    {
+      "id": "compose-reply",
+      "name": "Compose Reply (Set)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -120
+      ],
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "replyText",
+              "value": "={{$json['text'] || 'Thanks for reaching out \u2014 we\u2019ve received your message and will follow up shortly.'}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "gmail-reply",
+      "name": "Reply to Message",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1100,
+        -120
+      ],
+      "parameters": {
+        "operation": "reply",
+        "emailType": "text",
+        "messageId": "={{$json['id'] || $json['threadId']}}",
+        "message": "={{$json.replyText}}",
+        "options": {
+          "replyToSenderOnly": true
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CRED_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "log-sheet",
+      "name": "Log to Google Sheets (Append)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [
+        1100,
+        100
+      ],
+      "parameters": {
+        "operation": "append",
+        "sheetId": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+        "range": "REPLACE_WITH_SHEET_NAME!A:D",
+        "options": {
+          "valueInputMode": "RAW"
+        },
+        "data": {
+          "values": [
+            [
+              "={{$now}}",
+              "={{$json.from}}",
+              "={{$json.subject}}",
+              "Logged"
+            ]
+          ]
+        }
+      },
+      "credentials": {
+        "googleApi": {
+          "id": "REPLACE_WITH_YOUR_GOOGLE_CRED_ID",
+          "name": "Google account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        {
+          "node": "Prep Body (Function)",
+          "type": "main",
+          "index": 0
+        }
+      ]
+    },
+    "Prep Body (Function)": {
+      "main": [
+        {
+          "node": "Skip Auto/NoReply (IF)",
+          "type": "main",
+          "index": 0
+        }
+      ]
+    },
+    "Skip Auto/NoReply (IF)": {
+      "main": [
+        {
+          "node": "OpenAI Chat Model",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Log to Google Sheets (Append)",
+          "type": "main",
+          "index": 1
+        }
+      ]
+    },
+    "OpenAI Chat Model": {
+      "main": [
+        {
+          "node": "Compose Reply (Set)",
+          "type": "main",
+          "index": 0
+        }
+      ]
+    },
+    "Compose Reply (Set)": {
+      "main": [
+        {
+          "node": "Reply to Message",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Log to Google Sheets (Append)",
+          "type": "main",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
