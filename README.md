@@ -1,35 +1,70 @@
-# Email Automation Agent (n8n Workflow)
+# Email Automation Workflow (n8n + Gmail + OpenAI)
 
-This project automates email responses and logging using **n8n**, integrating Gmail, OpenAI, and Google Sheets.
+This is a small workflow I built in **n8n** to automate email replies and keep a simple activity log.  
+It connects **Gmail**, **OpenAI**, and **Google Sheets** to reply politely to new messages and record who contacted me and when.
 
-## 🧠 Overview
-The workflow listens for incoming emails via a Gmail Trigger, uses an AI model to generate a short, professional acknowledgment, replies automatically, and logs message details to Google Sheets.
+---
 
-It demonstrates lightweight automation suitable for small businesses or educational organizations with limited API infrastructure.
+## Overview
 
-## ⚙️ Architecture
-1. **Gmail Trigger** – Monitors specific labels for new messages.
-2. **AI Agent + OpenAI Chat Model** – Summarizes message context and drafts a short, polite reply.
-3. **Gmail Reply Node** – Sends the AI-generated response directly to the sender.
-4. **(Optional) Google Sheets Node** – Logs sender, subject, and timestamp for review.
+The idea behind this project was to make communication faster and more consistent.  
+Instead of manually checking and replying to every email, this setup listens for new ones, filters out system messages, generates a short acknowledgment using AI, replies automatically, and logs the details to Google Sheets for reference.
 
-## 🧰 Technologies Used
-- n8n (self-hosted, local instance)
-- Gmail API
-- OpenAI API
-- Google Sheets API
+---
 
-## 🔒 Security Notes
-This version uses placeholders for credentials and Spreadsheet IDs.  
-All testing was done on my local n8n instance to ensure data privacy and compliance with Gmail’s automation limits.
+## How It Works
 
-## 🚀 How to Run
-1. Import `workflow.json` into your n8n instance.
-2. Connect your own Gmail, OpenAI, and Google credentials.
-3. Adjust filters or labels in the Gmail Trigger as needed.
-4. Activate the workflow to run automatically.
+1. **Gmail Trigger** – Watches a specific Gmail label for new messages.  
+   I set filters so it ignores messages from “noreply,” “auto reply,” or “verification” emails.
 
-## 👨‍💻 About
-Developed by **Lakshya Pandey**  
-BSc Computer Science & Business Economics | Data & Tech Intern Candidate  
-Contact: [your email] | [LinkedIn profile]
+2. **Prep Body (Function)** – Extracts useful fields like sender, subject, body text, and message/thread IDs.
+
+3. **Guard Filter (Function)** – A simple code block that skips common automated emails (for example, “Out of Office” or “Password Reset”).
+
+4. **OpenAI Chat Model** – Uses a lightweight model (`gpt-4.1-mini`) to create a short, professional acknowledgment message.
+
+5. **Compose Reply & Gmail Node** – Sends the response directly to the sender, keeping it in the same email thread.
+
+6. **Google Sheets Log** – Adds a new row with the timestamp, sender, and subject so I can track who got an automatic reply.
+
+---
+
+## Why I Built It
+
+I wanted to explore how **automation + AI** can reduce repetitive work while keeping communication personal and professional.  
+This setup could easily be adapted for small teams or startups that handle inquiries daily.
+
+---
+
+## Security & Privacy
+
+- All credentials (Gmail, OpenAI, Google Sheets) are stored privately in my n8n instance.  
+- The public version on GitHub only includes placeholders like `REPLACE_WITH_YOUR_OPENAI_CRED_ID`.  
+- The workflow runs locally on my system, so no external data is exposed.  
+- Only sender, subject, and timestamps are logged — not full message contents.
+
+---
+
+## How To Try It
+
+1. Import `workflow_clean.json` into your n8n workspace.  
+2. Connect your own Gmail, OpenAI, and Google Sheets credentials.  
+3. Replace placeholder IDs with your own.  
+4. Adjust the Gmail trigger query or label to control which emails get processed.  
+5. Activate the workflow and test it by sending a message to yourself.
+
+---
+
+## Key Highlights
+
+| Feature | Description |
+|----------|-------------|
+| Simple filters | Skips auto-replies and system messages. |
+| Thread-safe | Replies in the same Gmail conversation. |
+| Clean logic | Uses readable JavaScript instead of complex regex. |
+| AI-written replies | Short, polite, and professional. |
+| Logging | Keeps a record of each reply in Google Sheets. |
+
+---
+
+
