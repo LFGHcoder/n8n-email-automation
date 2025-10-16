@@ -1,5 +1,5 @@
 {
-  "name": "Email Triage & Auto-Reply (Safe)",
+  "name": "Email Triage & Auto-Reply (Clean)",
   "nodes": [
     {
       "id": "gmail-trigger",
@@ -40,33 +40,20 @@
         0
       ],
       "parameters": {
-        "functionCode": "const itemsOut = [];\nfor (const item of items) {\n  const j = item.json || {};\n  const body = j.text || j.textPlain || j.snippet || '';\n  const subject = j.subject || (j.payload && j.payload.headers && j.payload.headers.subject) || '';\n  const from = j.from || (j.payload && j.payload.headers && j.payload.headers.from) || '';\n  itemsOut.push({ json: { from, subject, body } });\n}\nreturn itemsOut;"
+        "functionCode": "const out = [];\nfor (const item of items) {\n  const j = item.json || {};\n  const body = j.text || j.textPlain || j.snippet || '';\n  const subject = j.subject || (j.payload?.headers?.subject) || '';\n  const from = j.from || (j.payload?.headers?.from) || '';\n  const id = j.id || j.messageId || '';\n  const threadId = j.threadId || '';\n  out.push({ json: { from, subject, body, id, threadId } });\n}\nreturn out;"
       }
     },
     {
-      "id": "guard-if",
-      "name": "Skip Auto/NoReply (IF)",
-      "type": "n8n-nodes-base.if",
+      "id": "guard-filter",
+      "name": "Guard Filter (Function)",
+      "type": "n8n-nodes-base.function",
       "typeVersion": 2,
       "position": [
         440,
         0
       ],
       "parameters": {
-        "conditions": {
-          "string": [
-            {
-              "value1": "={{$json['from']}}",
-              "operation": "notRegex",
-              "value2": "(?i)(noreply|no-reply|do-not-reply)"
-            },
-            {
-              "value1": "={{$json['subject']}}",
-              "operation": "notRegex",
-              "value2": "(?i)(out of office|auto.?reply|verification|code|receipt)"
-            }
-          ]
-        }
+        "functionCode": "const keep = [];\nfor (const item of items) {\n  const from = (item.json.from || '').toLowerCase();\n  const subject = (item.json.subject || '').toLowerCase();\n  const skip = (\n    from.includes('noreply') ||\n    from.includes('no-reply') ||\n    from.includes('do-not-reply') ||\n    subject.includes('out of office') ||\n    subject.includes('auto reply') ||\n    subject.includes('autoreply') ||\n    subject.includes('verification') ||\n    subject.includes('code') ||\n    subject.includes('receipt')\n  );\n  if (!skip) keep.push(item);\n}\nreturn keep;"
       }
     },
     {
@@ -79,6 +66,8 @@
         -120
       ],
       "parameters": {
+        "promptType": "define",
+        "text": "You are concise and professional. Write ONLY a short 1\u20132 sentence acknowledgement of receipt (no JSON).\n\nEmail:\n{{ $json.body }}",
         "model": {
           "__rl": true,
           "mode": "list",
@@ -91,8 +80,7 @@
           "id": "REPLACE_WITH_YOUR_OPENAI_CRED_ID",
           "name": "OpenAI account"
         }
-      },
-      "notes": "System: You are a concise assistant.\nInstruction: From the email body below, output ONLY a short 1\u20132 sentence professional reply acknowledging receipt, not JSON.\nEmail body:\n{{ $json.body }}"
+      }
     },
     {
       "id": "compose-reply",
@@ -110,6 +98,22 @@
             {
               "name": "replyText",
               "value": "={{$json['text'] || 'Thanks for reaching out \u2014 we\u2019ve received your message and will follow up shortly.'}}"
+            },
+            {
+              "name": "id",
+              "value": "={{$json['id']}}"
+            },
+            {
+              "name": "threadId",
+              "value": "={{$json['threadId']}}"
+            },
+            {
+              "name": "from",
+              "value": "={{$json['from']}}"
+            },
+            {
+              "name": "subject",
+              "value": "={{$json['subject']}}"
             }
           ]
         }
@@ -127,7 +131,7 @@
       "parameters": {
         "operation": "reply",
         "emailType": "text",
-        "messageId": "={{$json['id'] || $json['threadId']}}",
+        "messageId": "={{ $json.id || $json.threadId }}",
         "message": "={{$json.replyText}}",
         "options": {
           "replyToSenderOnly": true
@@ -162,7 +166,7 @@
               "={{$now}}",
               "={{$json.from}}",
               "={{$json.subject}}",
-              "Logged"
+              "Replied"
             ]
           ]
         }
@@ -173,62 +177,82 @@
           "name": "Google account"
         }
       }
+    },
+    {
+      "id": "notes",
+      "name": "Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        220,
+        140
+      ],
+      "parameters": {
+        "content": "Clean version:\n\u2022 Filter via Function (no regex)\n\u2022 Uses real email body for AI\n\u2022 Replies sender-only with thread id\n\u2022 Logs to Google Sheets\n\u2022 Edit credentials + spreadsheet placeholders before running"
+      }
     }
   ],
   "connections": {
     "Gmail Trigger": {
       "main": [
-        {
-          "node": "Prep Body (Function)",
-          "type": "main",
-          "index": 0
-        }
+        [
+          {
+            "node": "Prep Body (Function)",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Prep Body (Function)": {
       "main": [
-        {
-          "node": "Skip Auto/NoReply (IF)",
-          "type": "main",
-          "index": 0
-        }
+        [
+          {
+            "node": "Guard Filter (Function)",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Skip Auto/NoReply (IF)": {
+    "Guard Filter (Function)": {
       "main": [
-        {
-          "node": "OpenAI Chat Model",
-          "type": "main",
-          "index": 0
-        },
-        {
-          "node": "Log to Google Sheets (Append)",
-          "type": "main",
-          "index": 1
-        }
+        [
+          {
+            "node": "OpenAI Chat Model",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "OpenAI Chat Model": {
       "main": [
-        {
-          "node": "Compose Reply (Set)",
-          "type": "main",
-          "index": 0
-        }
+        [
+          {
+            "node": "Compose Reply (Set)",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Compose Reply (Set)": {
       "main": [
-        {
-          "node": "Reply to Message",
-          "type": "main",
-          "index": 0
-        },
-        {
-          "node": "Log to Google Sheets (Append)",
-          "type": "main",
-          "index": 0
-        }
+        [
+          {
+            "node": "Reply to Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log to Google Sheets (Append)",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
